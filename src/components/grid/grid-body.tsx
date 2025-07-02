@@ -1,4 +1,4 @@
-import React, { ReactChild } from "react";
+import React, { ReactNode, useMemo } from "react";
 import { Task } from "../../types/public-types";
 import { addToDate } from "../../helpers/date-helper";
 import styles from "./grid.module.css";
@@ -12,116 +12,111 @@ export type GridBodyProps = {
   todayColor: string;
   rtl: boolean;
 };
-export const GridBody: React.FC<GridBodyProps> = ({
-  tasks,
-  dates,
-  rowHeight,
-  svgWidth,
-  columnWidth,
-  todayColor,
-  rtl,
-}) => {
-  let y = 0;
-  const gridRows: ReactChild[] = [];
-  const rowLines: ReactChild[] = [
-    <line
-      key="RowLineFirst"
-      x="0"
-      y1={0}
-      x2={svgWidth}
-      y2={0}
-      className={styles.gridRowLine}
-    />,
-  ];
-  for (const task of tasks) {
-    gridRows.push(
-      <rect
-        key={"Row" + task.id}
-        x="0"
-        y={y}
-        width={svgWidth}
-        height={rowHeight}
-        className={styles.gridRow}
-      />
-    );
-    rowLines.push(
-      <line
-        key={"RowLine" + task.id}
-        x="0"
-        y1={y + rowHeight}
-        x2={svgWidth}
-        y2={y + rowHeight}
-        className={styles.gridRowLine}
-      />
-    );
-    y += rowHeight;
-  }
 
-  const now = new Date();
-  let tickX = 0;
-  const ticks: ReactChild[] = [];
-  let today: ReactChild = <rect />;
-  for (let i = 0; i < dates.length; i++) {
-    const date = dates[i];
-    ticks.push(
-      <line
-        key={date.getTime()}
-        x1={tickX}
-        y1={0}
-        x2={tickX}
-        y2={y}
-        className={styles.gridTick}
-      />
+export const GridBody: React.FC<GridBodyProps> = React.memo(
+  ({ tasks, dates, rowHeight, svgWidth, columnWidth, todayColor, rtl }) => {
+    const now = useMemo(() => new Date(), []);
+
+    const totalHeight = tasks.length * rowHeight;
+
+    const { gridRows, rowLines } = useMemo(() => {
+      const rows: ReactNode[] = [];
+      const lines: ReactNode[] = [
+        <line
+          key="RowLineFirst"
+          x1={0}
+          y1={0}
+          x2={svgWidth}
+          y2={0}
+          className={styles.gridRowLine}
+        />,
+      ];
+
+      let y = 0;
+      for (const task of tasks) {
+        rows.push(
+          <rect
+            key={`Row-${task.id}`}
+            x={0}
+            y={y}
+            width={svgWidth}
+            height={rowHeight}
+            className={styles.gridRow}
+          />
+        );
+        lines.push(
+          <line
+            key={`RowLine-${task.id}`}
+            x1={0}
+            y1={y + rowHeight}
+            x2={svgWidth}
+            y2={y + rowHeight}
+            className={styles.gridRowLine}
+          />
+        );
+        y += rowHeight;
+      }
+
+      return { gridRows: rows, rowLines: lines };
+    }, [tasks, svgWidth, rowHeight]);
+
+    const { ticks, todayMarker } = useMemo(() => {
+      const ticks: ReactNode[] = [];
+      let tickX = 0;
+      let today: ReactNode = null;
+
+      for (let i = 0; i < dates.length; i++) {
+        const date = dates[i];
+        const nextDate = dates[i + 1];
+        const prevDate = dates[i - 1];
+        const currentTime = date.getTime();
+        const prevTime = prevDate?.getTime() ?? 0;
+
+        ticks.push(
+          <line
+            key={`Tick-${currentTime}`}
+            x1={tickX}
+            y1={0}
+            x2={tickX}
+            y2={totalHeight}
+            className={styles.gridTick}
+          />
+        );
+
+        const isToday =
+          (now >= date && nextDate && now < nextDate) ||
+          (i === dates.length - 1 &&
+            now >= date &&
+            addToDate(date, currentTime - prevTime, "millisecond") > now);
+
+        const isTodayRTL = rtl && nextDate && now <= date && now > nextDate;
+
+        if (isToday || isTodayRTL) {
+          today = (
+            <rect
+              key="today"
+              x={rtl ? tickX + columnWidth : tickX}
+              y={0}
+              width={columnWidth}
+              height={totalHeight}
+              fill={todayColor}
+            />
+          );
+        }
+
+        tickX += columnWidth;
+      }
+
+      return { ticks, todayMarker: today };
+    }, [dates, columnWidth, now, totalHeight, rtl, todayColor]);
+
+    return (
+      <g className="gridBody">
+        <g className="rows">{gridRows}</g>
+        <g className="rowLines">{rowLines}</g>
+        <g className="ticks">{ticks}</g>
+        <g className="today">{todayMarker}</g>
+      </g>
     );
-    if (
-      (i + 1 !== dates.length &&
-        date.getTime() < now.getTime() &&
-        dates[i + 1].getTime() >= now.getTime()) ||
-      // if current date is last
-      (i !== 0 &&
-        i + 1 === dates.length &&
-        date.getTime() < now.getTime() &&
-        addToDate(
-          date,
-          date.getTime() - dates[i - 1].getTime(),
-          "millisecond"
-        ).getTime() >= now.getTime())
-    ) {
-      today = (
-        <rect
-          x={tickX}
-          y={0}
-          width={columnWidth}
-          height={y}
-          fill={todayColor}
-        />
-      );
-    }
-    // rtl for today
-    if (
-      rtl &&
-      i + 1 !== dates.length &&
-      date.getTime() >= now.getTime() &&
-      dates[i + 1].getTime() < now.getTime()
-    ) {
-      today = (
-        <rect
-          x={tickX + columnWidth}
-          y={0}
-          width={columnWidth}
-          height={y}
-          fill={todayColor}
-        />
-      );
-    }
-    tickX += columnWidth;
   }
-  return (
-    <g className="gridBody">
-      <g className="rows">{gridRows}</g>
-      <g className="rowLines">{rowLines}</g>
-      <g className="ticks">{ticks}</g>
-      <g className="today">{today}</g>
-    </g>
-  );
-};
+);
